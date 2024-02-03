@@ -26,6 +26,7 @@ void AudioInputCallback(void * inUserData,
 @property (weak, nonatomic) IBOutlet UIButton   *buttonTranscribe;
 @property (weak, nonatomic) IBOutlet UIButton   *buttonRealtime;
 @property (weak, nonatomic) IBOutlet UITextView *textviewResult;
+@property (weak, nonatomic) IBOutlet UITextView *understandingResult;
 
 @end
 
@@ -47,10 +48,39 @@ void AudioInputCallback(void * inUserData,
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    // whisper.cpp initialization
-    {
+    // initialize audio format and buffers
+    [self setupAudioFormat:&stateInp.dataFormat];
+
+    stateInp.n_samples = 0;
+    stateInp.audioBufferI16 = malloc(MAX_AUDIO_SEC*SAMPLE_RATE*sizeof(int16_t));
+    stateInp.audioBufferF32 = malloc(MAX_AUDIO_SEC*SAMPLE_RATE*sizeof(float));
+
+    stateInp.isTranscribing = false;
+    stateInp.isRealtime = false;
+    
+    // 버튼 숨김
+    self.buttonToggleCapture.hidden = YES;
+    self.buttonTranscribe.hidden = YES;
+    self.buttonRealtime.hidden = YES;
+    
+    self.textviewResult.text = @"음성 인식 모델 초기화 중...";
+    
+    // 로딩 인디케이터 초기화 및 화면 중앙에 배치
+    self.loadingIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    self.loadingIndicator.center = self.view.center;
+    [self.view addSubview:self.loadingIndicator];
+    
+    // 로딩 인디케이터 시작
+    [self.loadingIndicator startAnimating];
+
+    // 비동기 모델 로딩 작업 시작
+    [self performAsyncLoading];
+}
+
+- (void) performAsyncLoading {
+    // Move whisper.cpp initialization to a background thread
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         // load the model
-        //        NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"ggml-base.en" ofType:@"bin"];
         NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"ggml-medium" ofType:@"bin"];
         // check if the model exists
         if (![[NSFileManager defaultManager] fileExistsAtPath:modelPath]) {
@@ -61,33 +91,40 @@ void AudioInputCallback(void * inUserData,
         NSLog(@"Loading model from %@", modelPath);
 
         // create ggml context
-
         struct whisper_context_params cparams = whisper_context_default_params();
-#if TARGET_OS_SIMULATOR
+    #if TARGET_OS_SIMULATOR
         cparams.use_gpu = false;
         NSLog(@"Running on simulator, using CPU");
-#endif
-        stateInp.ctx = whisper_init_from_file_with_params([modelPath UTF8String], cparams);
+    #endif
+        void* ctx = whisper_init_from_file_with_params([modelPath UTF8String], cparams);
 
-        // check if the model was loaded successfully
-        if (stateInp.ctx == NULL) {
-            NSLog(@"Failed to load model");
-            return;
-        }
-    }
-
-    // initialize audio format and buffers
-    {
-        [self setupAudioFormat:&stateInp.dataFormat];
-
-        stateInp.n_samples = 0;
-        stateInp.audioBufferI16 = malloc(MAX_AUDIO_SEC*SAMPLE_RATE*sizeof(int16_t));
-        stateInp.audioBufferF32 = malloc(MAX_AUDIO_SEC*SAMPLE_RATE*sizeof(float));
-    }
-
-    stateInp.isTranscribing = false;
-    stateInp.isRealtime = false;
+        // Switch back to the main thread to update any UI or state
+        dispatch_async(dispatch_get_main_queue(), ^{
+//            __strong typeof(weakSelf) strongSelf = weakSelf;
+            // check if the model was loaded successfully
+            if (ctx == NULL) {
+                NSLog(@"Failed to load model");
+            } else {
+                NSLog(@"Loading is done");
+                
+                // 인디케이터 숨김
+                [self.loadingIndicator stopAnimating];
+                
+                // Update the context and UI if necessary
+                self->stateInp.ctx = ctx;
+                // Perform any other UI updates or post-loading operations here
+                
+                // 버튼 활성화
+                self.buttonToggleCapture.hidden = NO;
+                self.buttonTranscribe.hidden = NO;
+//                self.buttonRealtime.hidden = NO;
+                
+                self.textviewResult.text = @"음성 인식 가능";
+            }
+        });
+    });
 }
+
 
 -(IBAction) stopCapturing {
     NSLog(@"Stop capturing");
@@ -117,6 +154,9 @@ void AudioInputCallback(void * inUserData,
 
     // initiate audio capturing
     NSLog(@"Start capturing");
+    
+    // clear understandingResult
+    _understandingResult.text = @"";
 
     stateInp.n_samples = 0;
     stateInp.vc = (__bridge void *)(self);
@@ -189,13 +229,13 @@ void AudioInputCallback(void * inUserData,
         for (int i = 0; i < self->stateInp.n_samples; i++) {
             self->stateInp.audioBufferF32[i] = (float)self->stateInp.audioBufferI16[i] / 32768.0f;
         }
-
+        
         // run the model
         struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-
+        
         // get maximum number of threads on this device (max 8)
         const int max_threads = MIN(8, (int)[[NSProcessInfo processInfo] processorCount]);
-
+        
         params.print_realtime   = true;
         params.print_progress   = false;
         params.print_timestamps = true;
@@ -208,27 +248,27 @@ void AudioInputCallback(void * inUserData,
         params.no_context       = true;
         params.single_segment   = self->stateInp.isRealtime;
         params.no_timestamps    = params.single_segment;
-
+        
         CFTimeInterval startTime = CACurrentMediaTime();
-
+        
         whisper_reset_timings(self->stateInp.ctx);
-
+        
         if (whisper_full(self->stateInp.ctx, params, self->stateInp.audioBufferF32, self->stateInp.n_samples) != 0) {
             NSLog(@"Failed to run the model");
             self->_textviewResult.text = @"Failed to run the model";
-
+            
             return;
         }
-
+        
         whisper_print_timings(self->stateInp.ctx);
-
+        
         CFTimeInterval endTime = CACurrentMediaTime();
-
+        
         NSLog(@"\nProcessing time: %5.3f, on %d threads", endTime - startTime, params.n_threads);
-
+        
         // result text
         NSString *result = @"";
-
+        
         int n_segments = whisper_full_n_segments(self->stateInp.ctx);
         for (int i = 0; i < n_segments; i++) {
             const char * text_cur = whisper_full_get_segment_text(self->stateInp.ctx, i);
@@ -236,6 +276,7 @@ void AudioInputCallback(void * inUserData,
             // append the text to the result
             result = [result stringByAppendingString:[NSString stringWithUTF8String:text_cur]];
         }
+        NSString *pureText = result;
 
         const float tRecording = (float)self->stateInp.n_samples / (float)self->stateInp.dataFormat.mSampleRate;
 
@@ -248,6 +289,10 @@ void AudioInputCallback(void * inUserData,
             self->_textviewResult.text = result;
             self->stateInp.isTranscribing = false;
         });
+        
+        // request to LLM server
+        [self sendServerRequestWithText:pureText];
+
     });
 }
 
@@ -301,5 +346,81 @@ void AudioInputCallback(void * inUserData,
         });
     }
 }
+
+- (void)sendServerRequestWithText:(NSString *)text {
+    NSString *urlString = @"https://vc13jvtdhj.execute-api.us-west-2.amazonaws.com/test/order";
+    NSURL *url = [NSURL URLWithString:urlString];
+
+    NSString *instructionPromptTemplate = @"### 다음 주문 문장을 분석하여 음식명, 옵션명, 수량을 추출해줘.\n\n### 명령: %@ ### 응답:\n";
+
+    NSString *prompt = [NSString stringWithFormat:instructionPromptTemplate, text];
+    NSUInteger promptLength = [prompt length];
+
+    NSDictionary *dataDict = @{
+        @"inputs": prompt,
+        @"parameters": @{
+                @"do_sample": @YES,
+                @"temperature": @0.3,
+                @"top_k": @50,
+                @"max_new_tokens": @256,
+                @"repetition_penalty": @1.03,
+                @"stop": @[@"</s>"]
+        }
+    };
+    NSError *error;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:dataDict options:kNilOptions error:&error];
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [request setHTTPMethod:@"POST"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [request setHTTPBody:jsonData];
+
+    NSURLSession *session = [NSURLSession sharedSession];
+    __weak typeof(self) weakSelf = self; // Avoid retain cycles
+    NSURLSessionDataTask *dataTask = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            NSLog(@"Error: %@", error);
+        } else {
+            NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+            NSString *infoText = @"";
+            NSLog(@"Response status code: %ld", (long)[httpResponse statusCode]);
+
+            if ([httpResponse statusCode] == 200) {
+                NSError *parseError = nil;
+                id jsonObject = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+                
+                if (!parseError) {
+                    if ([jsonObject isKindOfClass:[NSArray class]]) {
+                        NSArray *responseArray = (NSArray *)jsonObject;
+                        NSDictionary *firstDict = responseArray[0];
+                        
+                        if ([firstDict objectForKey:@"generated_text"] != nil) {
+                            NSString *generatedText = firstDict[@"generated_text"];
+                            NSString *trimmedText = [generatedText substringFromIndex:promptLength];
+
+                            infoText = trimmedText;
+                        } else {
+                            infoText = @"'generated_text' 키가 존재하지 않습니다.";
+                        }
+
+                    } else {
+                        infoText = [NSString stringWithFormat:@"API Gateway -> LLM Server 연결 이상: %@", jsonObject];
+                    }
+                } else {
+                    infoText = [NSString stringWithFormat:@"JSON 파싱 오류: %@", parseError];
+                }
+            } else {
+                infoText = @"API Gateway 연결 이상";
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                strongSelf->_understandingResult.text = infoText;
+            });
+        }
+    }];
+
+    [dataTask resume];
+}
+
 
 @end

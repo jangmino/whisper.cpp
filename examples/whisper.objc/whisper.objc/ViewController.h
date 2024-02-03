@@ -42,4 +42,6 @@ typedef struct
     StateInp stateInp;
 }
 
+@property (strong, nonatomic) UIActivityIndicatorView *loadingIndicator;
+
 @end
