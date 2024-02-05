@@ -32,120 +32,35 @@ void AudioInputCallback(void * inUserData,
 
 @implementation ViewController
 
-- (void)setupAudioFormat:(AudioStreamBasicDescription*)format
-{
-    format->mSampleRate       = WHISPER_SAMPLE_RATE;
-    format->mFormatID         = kAudioFormatLinearPCM;
-    format->mFramesPerPacket  = 1;
-    format->mChannelsPerFrame = 1;
-    format->mBytesPerFrame    = 2;
-    format->mBytesPerPacket   = 2;
-    format->mBitsPerChannel   = 16;
-    format->mReserved         = 0;
-    format->mFormatFlags      = kLinearPCMFormatFlagIsSignedInteger;
-}
+
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-
-    // initialize audio format and buffers
-    [self setupAudioFormat:&stateInp.dataFormat];
-
-    stateInp.n_samples = 0;
-    stateInp.audioBufferI16 = malloc(MAX_AUDIO_SEC*SAMPLE_RATE*sizeof(int16_t));
-    stateInp.audioBufferF32 = malloc(MAX_AUDIO_SEC*SAMPLE_RATE*sizeof(float));
-
-    stateInp.isTranscribing = false;
-    stateInp.isRealtime = false;
     
-    // 버튼 숨김
-    self.buttonToggleCapture.hidden = YES;
-    self.buttonTranscribe.hidden = YES;
-    self.buttonRealtime.hidden = YES;
+    _buttonRealtime.hidden = YES;
     
-    self.textviewResult.text = @"음성 인식 모델 초기화 중...";
-    
-    // 로딩 인디케이터 초기화 및 화면 중앙에 배치
-    self.loadingIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    self.loadingIndicator.center = self.view.center;
-    [self.view addSubview:self.loadingIndicator];
-    
-    // 로딩 인디케이터 시작
-    [self.loadingIndicator startAnimating];
-
-    // 비동기 모델 로딩 작업 시작
-    [self performAsyncLoading];
 }
-
-- (void) performAsyncLoading {
-    // Move whisper.cpp initialization to a background thread
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        // load the model
-        NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"ggml-medium" ofType:@"bin"];
-        // check if the model exists
-        if (![[NSFileManager defaultManager] fileExistsAtPath:modelPath]) {
-            NSLog(@"Model file not found");
-            return;
-        }
-
-        NSLog(@"Loading model from %@", modelPath);
-
-        // create ggml context
-        struct whisper_context_params cparams = whisper_context_default_params();
-    #if TARGET_OS_SIMULATOR
-        cparams.use_gpu = false;
-        NSLog(@"Running on simulator, using CPU");
-    #endif
-        void* ctx = whisper_init_from_file_with_params([modelPath UTF8String], cparams);
-
-        // Switch back to the main thread to update any UI or state
-        dispatch_async(dispatch_get_main_queue(), ^{
-//            __strong typeof(weakSelf) strongSelf = weakSelf;
-            // check if the model was loaded successfully
-            if (ctx == NULL) {
-                NSLog(@"Failed to load model");
-            } else {
-                NSLog(@"Loading is done");
-                
-                // 인디케이터 숨김
-                [self.loadingIndicator stopAnimating];
-                
-                // Update the context and UI if necessary
-                self->stateInp.ctx = ctx;
-                // Perform any other UI updates or post-loading operations here
-                
-                // 버튼 활성화
-                self.buttonToggleCapture.hidden = NO;
-                self.buttonTranscribe.hidden = NO;
-//                self.buttonRealtime.hidden = NO;
-                
-                self.textviewResult.text = @"음성 인식 가능";
-            }
-        });
-    });
-}
-
 
 -(IBAction) stopCapturing {
-    NSLog(@"Stop capturing");
+    NSLog(@"녹음 중지");
 
     _labelStatusInp.text = @"Status: Idle";
 
-    [_buttonToggleCapture setTitle:@"Start capturing" forState:UIControlStateNormal];
+    [_buttonToggleCapture setTitle:@"녹음 시작" forState:UIControlStateNormal];
     [_buttonToggleCapture setBackgroundColor:[UIColor grayColor]];
 
-    stateInp.isCapturing = false;
+    _stateInp.isCapturing = false;
 
-    AudioQueueStop(stateInp.queue, true);
+    AudioQueueStop(_stateInp.queue, true);
     for (int i = 0; i < NUM_BUFFERS; i++) {
-        AudioQueueFreeBuffer(stateInp.queue, stateInp.buffers[i]);
+        AudioQueueFreeBuffer(_stateInp.queue, _stateInp.buffers[i]);
     }
 
-    AudioQueueDispose(stateInp.queue, true);
+    AudioQueueDispose(_stateInp.queue, true);
 }
 
 - (IBAction)toggleCapture:(id)sender {
-    if (stateInp.isCapturing) {
+    if (_stateInp.isCapturing) {
         // stop capturing
         [self stopCapturing];
 
@@ -153,33 +68,33 @@ void AudioInputCallback(void * inUserData,
     }
 
     // initiate audio capturing
-    NSLog(@"Start capturing");
+    NSLog(@"녹음 시작");
     
     // clear understandingResult
     _understandingResult.text = @"";
 
-    stateInp.n_samples = 0;
-    stateInp.vc = (__bridge void *)(self);
+    _stateInp.n_samples = 0;
+    _stateInp.vc = (__bridge void *)(self);
 
-    OSStatus status = AudioQueueNewInput(&stateInp.dataFormat,
+    OSStatus status = AudioQueueNewInput(&_stateInp.dataFormat,
                                          AudioInputCallback,
-                                         &stateInp,
+                                         &_stateInp,
                                          CFRunLoopGetCurrent(),
                                          kCFRunLoopCommonModes,
                                          0,
-                                         &stateInp.queue);
+                                         &_stateInp.queue);
 
     if (status == 0) {
         for (int i = 0; i < NUM_BUFFERS; i++) {
-            AudioQueueAllocateBuffer(stateInp.queue, NUM_BYTES_PER_BUFFER, &stateInp.buffers[i]);
-            AudioQueueEnqueueBuffer (stateInp.queue, stateInp.buffers[i], 0, NULL);
+            AudioQueueAllocateBuffer(_stateInp.queue, NUM_BYTES_PER_BUFFER, &_stateInp.buffers[i]);
+            AudioQueueEnqueueBuffer (_stateInp.queue, _stateInp.buffers[i], 0, NULL);
         }
 
-        stateInp.isCapturing = true;
-        status = AudioQueueStart(stateInp.queue, NULL);
+        _stateInp.isCapturing = true;
+        status = AudioQueueStart(_stateInp.queue, NULL);
         if (status == 0) {
             _labelStatusInp.text = @"Status: Capturing";
-            [sender setTitle:@"Stop Capturing" forState:UIControlStateNormal];
+            [sender setTitle:@"녹음 중지" forState:UIControlStateNormal];
             [_buttonToggleCapture setBackgroundColor:[UIColor redColor]];
         }
     }
@@ -192,42 +107,42 @@ void AudioInputCallback(void * inUserData,
 - (IBAction)onTranscribePrepare:(id)sender {
     _textviewResult.text = @"Processing - please wait ...";
 
-    if (stateInp.isRealtime) {
+    if (_stateInp.isRealtime) {
         [self onRealtime:(id)sender];
     }
 
-    if (stateInp.isCapturing) {
+    if (_stateInp.isCapturing) {
         [self stopCapturing];
     }
 }
 
 - (IBAction)onRealtime:(id)sender {
-    stateInp.isRealtime = !stateInp.isRealtime;
+    _stateInp.isRealtime = !_stateInp.isRealtime;
 
-    if (stateInp.isRealtime) {
+    if (_stateInp.isRealtime) {
         [_buttonRealtime setBackgroundColor:[UIColor greenColor]];
     } else {
         [_buttonRealtime setBackgroundColor:[UIColor grayColor]];
     }
 
-    NSLog(@"Realtime: %@", stateInp.isRealtime ? @"ON" : @"OFF");
+    NSLog(@"Realtime: %@", _stateInp.isRealtime ? @"ON" : @"OFF");
 }
 
 - (IBAction)onTranscribe:(id)sender {
-    if (stateInp.isTranscribing) {
+    if (_stateInp.isTranscribing) {
         return;
     }
 
-    NSLog(@"Processing %d samples", stateInp.n_samples);
+    NSLog(@"Processing %d samples", _stateInp.n_samples);
 
-    stateInp.isTranscribing = true;
+    _stateInp.isTranscribing = true;
 
     // dispatch the model to a background thread
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         // process captured audio
         // convert I16 to F32
-        for (int i = 0; i < self->stateInp.n_samples; i++) {
-            self->stateInp.audioBufferF32[i] = (float)self->stateInp.audioBufferI16[i] / 32768.0f;
+        for (int i = 0; i < self->_stateInp.n_samples; i++) {
+            self->_stateInp.audioBufferF32[i] = (float)self->_stateInp.audioBufferI16[i] / 32768.0f;
         }
         
         // run the model
@@ -246,21 +161,21 @@ void AudioInputCallback(void * inUserData,
         params.n_threads        = max_threads;
         params.offset_ms        = 0;
         params.no_context       = true;
-        params.single_segment   = self->stateInp.isRealtime;
+        params.single_segment   = self->_stateInp.isRealtime;
         params.no_timestamps    = params.single_segment;
         
         CFTimeInterval startTime = CACurrentMediaTime();
         
-        whisper_reset_timings(self->stateInp.ctx);
+        whisper_reset_timings(self->_stateInp.ctx);
         
-        if (whisper_full(self->stateInp.ctx, params, self->stateInp.audioBufferF32, self->stateInp.n_samples) != 0) {
+        if (whisper_full(self->_stateInp.ctx, params, self->_stateInp.audioBufferF32, self->_stateInp.n_samples) != 0) {
             NSLog(@"Failed to run the model");
             self->_textviewResult.text = @"Failed to run the model";
             
             return;
         }
         
-        whisper_print_timings(self->stateInp.ctx);
+        whisper_print_timings(self->_stateInp.ctx);
         
         CFTimeInterval endTime = CACurrentMediaTime();
         
@@ -269,16 +184,16 @@ void AudioInputCallback(void * inUserData,
         // result text
         NSString *result = @"";
         
-        int n_segments = whisper_full_n_segments(self->stateInp.ctx);
+        int n_segments = whisper_full_n_segments(self->_stateInp.ctx);
         for (int i = 0; i < n_segments; i++) {
-            const char * text_cur = whisper_full_get_segment_text(self->stateInp.ctx, i);
+            const char * text_cur = whisper_full_get_segment_text(self->_stateInp.ctx, i);
 
             // append the text to the result
             result = [result stringByAppendingString:[NSString stringWithUTF8String:text_cur]];
         }
         NSString *pureText = result;
 
-        const float tRecording = (float)self->stateInp.n_samples / (float)self->stateInp.dataFormat.mSampleRate;
+        const float tRecording = (float)self->_stateInp.n_samples / (float)self->_stateInp.dataFormat.mSampleRate;
 
         // append processing time
         result = [result stringByAppendingString:[NSString stringWithFormat:@"\n\n[recording time:  %5.3f s]", tRecording]];
@@ -287,7 +202,7 @@ void AudioInputCallback(void * inUserData,
         // dispatch the result to the main thread
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_textviewResult.text = result;
-            self->stateInp.isTranscribing = false;
+            self->_stateInp.isTranscribing = false;
         });
         
         // request to LLM server
