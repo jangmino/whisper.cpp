@@ -262,8 +262,21 @@ void AudioInputCallback(void * inUserData,
     }
 }
 
+- (NSString *)serverURLFromPlist {
+    NSString *path = [[NSBundle mainBundle] pathForResource:@"Config" ofType:@"plist"];
+    NSDictionary *config = [NSDictionary dictionaryWithContentsOfFile:path];
+    NSString *urlString = config[@"ServerURL"];
+    return urlString;
+}
+
 - (void)sendServerRequestWithText:(NSString *)text {
-    NSString *urlString = @"https://vc13jvtdhj.execute-api.us-west-2.amazonaws.com/test/order";
+    // jangmin.oh private aws gateway
+//    NSString *urlString = @"https://vc13jvtdhj.execute-api.us-west-2.amazonaws.com/test/order";
+    
+    // manna-aws gateway
+//    NSString *urlString = @"https://kn8m633eaf.execute-api.us-west-2.amazonaws.com/test/order";
+    
+    NSString *urlString = [self serverURLFromPlist];
     NSURL *url = [NSURL URLWithString:urlString];
 
     NSString *instructionPromptTemplate = @"### 다음 주문 문장을 분석하여 음식명, 옵션명, 수량을 추출해줘.\n\n### 명령: %@ ### 응답:\n";

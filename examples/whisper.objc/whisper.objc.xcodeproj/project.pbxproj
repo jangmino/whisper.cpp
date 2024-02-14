@@ -27,6 +27,7 @@
 		AD2BA49D2B6E09E700AEC520 /* InitialViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = AD2BA49C2B6E09E700AEC520 /* InitialViewController.m */; };
 		AD37509B2B342EF300C197D0 /* ggml-medium-encoder.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = AD37509A2B342EF300C197D0 /* ggml-medium-encoder.mlmodelc */; };
 		AD37509D2B342F1600C197D0 /* ggml-medium.bin in Resources */ = {isa = PBXBuildFile; fileRef = AD37509C2B342F1600C197D0 /* ggml-medium.bin */; };
+		ADB020692B7D188C006A578F /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = ADB020682B7D188C006A578F /* Config.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -80,6 +81,7 @@
 		AD2BA49E2B6E17A600AEC520 /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
 		AD37509A2B342EF300C197D0 /* ggml-medium-encoder.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = "ggml-medium-encoder.mlmodelc"; path = "../../models/ggml-medium-encoder.mlmodelc"; sourceTree = "<group>"; };
 		AD37509C2B342F1600C197D0 /* ggml-medium.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; name = "ggml-medium.bin"; path = "../../models/ggml-medium.bin"; sourceTree = "<group>"; };
+		ADB020682B7D188C006A578F /* Config.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Config.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +145,7 @@
 				AD2BA49B2B6E09E700AEC520 /* InitialViewController.h */,
 				AD2BA49C2B6E09E700AEC520 /* InitialViewController.m */,
 				AD2BA49E2B6E17A600AEC520 /* CommonTypes.h */,
+				ADB020682B7D188C006A578F /* Config.plist */,
 			);
 			path = whisper.objc;
 			sourceTree = "<group>";
@@ -223,6 +226,7 @@
 				AD37509B2B342EF300C197D0 /* ggml-medium-encoder.mlmodelc in Resources */,
 				18627C8929052BE000BD2A04 /* LaunchScreen.storyboard in Resources */,
 				18627C8629052BE000BD2A04 /* Assets.xcassets in Resources */,
+				ADB020692B7D188C006A578F /* Config.plist in Resources */,
 				18627C8429052BDF00BD2A04 /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -394,7 +398,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 0;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 458277H4FQ;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -430,7 +434,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 0;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 458277H4FQ;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = NO;
 				GENERATE_INFOPLIST_FILE = YES;
