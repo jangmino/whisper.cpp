@@ -90,6 +90,7 @@ void AudioInputCallback(void * inUserData,
     dispatch_async(dispatch_get_main_queue(), ^{
         __strong typeof(self) strongSelf = self;
         strongSelf->_dataItems = @[];
+        strongSelf->_textviewResult.text = @"음성 인식 결과";
         strongSelf->_informationText.text = @"";
         [strongSelf->_tableView reloadData];
     });
@@ -207,7 +208,7 @@ void AudioInputCallback(void * inUserData,
         NSLog(@"\nProcessing time: %5.3f, on %d threads", endTime - startTime, params.n_threads);
         
         // result text
-        NSString *result = @"";
+        NSString *result = @"음성 인식 결과\n\n";
         
         int n_segments = whisper_full_n_segments(self->_stateInp.ctx);
         for (int i = 0; i < n_segments; i++) {
@@ -227,7 +228,7 @@ void AudioInputCallback(void * inUserData,
 
         // dispatch the result to the main thread
         dispatch_async(dispatch_get_main_queue(), ^{
-            self->_informationText.text = result;
+            self->_textviewResult.text = result;
             self->_informationText.text = infomationResult;
             self->_stateInp.isTranscribing = false;
         });
