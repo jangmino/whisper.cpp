@@ -19,14 +19,17 @@ void AudioInputCallback(void * inUserData,
                         UInt32 inNumberPacketDescriptions,
                         const AudioStreamPacketDescription * inPacketDescs);
 
-@interface ViewController ()
+@interface ViewController () <UITableViewDataSource>
 
 @property (weak, nonatomic) IBOutlet UILabel    *labelStatusInp;
 @property (weak, nonatomic) IBOutlet UIButton   *buttonToggleCapture;
 @property (weak, nonatomic) IBOutlet UIButton   *buttonTranscribe;
 @property (weak, nonatomic) IBOutlet UIButton   *buttonRealtime;
 @property (weak, nonatomic) IBOutlet UITextView *textviewResult;
-@property (weak, nonatomic) IBOutlet UITextView *understandingResult;
+@property (weak, nonatomic) IBOutlet UITextView *informationText;
+
+@property (strong, nonatomic) IBOutlet UITableView *tableView;
+@property (strong, nonatomic) NSArray *dataItems; // 테이블 뷰에 표시될 데이터 배열
 
 @end
 
@@ -39,15 +42,28 @@ void AudioInputCallback(void * inUserData,
     
     _buttonRealtime.hidden = YES;
     
+    self.tableView.dataSource = self;
+    
+//    // 2x3 행렬 데이터 생성
+//    NSString *row1 = @"음식명: 짜장면, 옵션명: 곱배기, 수량: 1";
+//    NSString *row2 = @"음식명: 아메리카노, 옵션명: 그랑데, 수량: 3";
+
+    // 전체 데이터를 dataItems 배열에 저장
+//    self.dataItems = @[row1, row2];
+    
+    self.dataItems = @[];
+    
 }
 
 -(IBAction) stopCapturing {
     NSLog(@"녹음 중지");
 
-    _labelStatusInp.text = @"Status: Idle";
-
-    [_buttonToggleCapture setTitle:@"녹음 시작" forState:UIControlStateNormal];
-    [_buttonToggleCapture setBackgroundColor:[UIColor grayColor]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(self) strongSelf = self;
+        strongSelf->_labelStatusInp.text = @"Status: Idle";
+        [strongSelf->_buttonToggleCapture setTitle:@"녹음 시작" forState:UIControlStateNormal];
+        [strongSelf->_buttonToggleCapture setBackgroundColor:[UIColor grayColor]];
+    });
 
     _stateInp.isCapturing = false;
 
@@ -70,8 +86,13 @@ void AudioInputCallback(void * inUserData,
     // initiate audio capturing
     NSLog(@"녹음 시작");
     
-    // clear understandingResult
-    _understandingResult.text = @"";
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        __strong typeof(self) strongSelf = self;
+        strongSelf->_dataItems = @[];
+        strongSelf->_informationText.text = @"";
+        [strongSelf->_tableView reloadData];
+    });
 
     _stateInp.n_samples = 0;
     _stateInp.vc = (__bridge void *)(self);
@@ -105,7 +126,7 @@ void AudioInputCallback(void * inUserData,
 }
 
 - (IBAction)onTranscribePrepare:(id)sender {
-    _textviewResult.text = @"Processing - please wait ...";
+    _informationText.text = @"Processing - please wait ...";
 
     if (_stateInp.isRealtime) {
         [self onRealtime:(id)sender];
@@ -129,6 +150,10 @@ void AudioInputCallback(void * inUserData,
 }
 
 - (IBAction)onTranscribe:(id)sender {
+//    // 디버그
+//    [self sendServerRequestWithText:@"소금빵 3개 주세요"];
+//    return;
+//    // 디버그
     if (_stateInp.isTranscribing) {
         return;
     }
@@ -170,7 +195,7 @@ void AudioInputCallback(void * inUserData,
         
         if (whisper_full(self->_stateInp.ctx, params, self->_stateInp.audioBufferF32, self->_stateInp.n_samples) != 0) {
             NSLog(@"Failed to run the model");
-            self->_textviewResult.text = @"Failed to run the model";
+            self->_informationText.text = @"Failed to run the model";
             
             return;
         }
@@ -196,12 +221,14 @@ void AudioInputCallback(void * inUserData,
         const float tRecording = (float)self->_stateInp.n_samples / (float)self->_stateInp.dataFormat.mSampleRate;
 
         // append processing time
-        result = [result stringByAppendingString:[NSString stringWithFormat:@"\n\n[recording time:  %5.3f s]", tRecording]];
-        result = [result stringByAppendingString:[NSString stringWithFormat:@"  \n[processing time: %5.3f s]", endTime - startTime]];
+        NSString *infomationResult = @"";
+        infomationResult = [infomationResult stringByAppendingString:[NSString stringWithFormat:@"\n\n[recording time:  %5.3f s]", tRecording]];
+        infomationResult = [infomationResult stringByAppendingString:[NSString stringWithFormat:@"  \n[processing time: %5.3f s]", endTime - startTime]];
 
         // dispatch the result to the main thread
         dispatch_async(dispatch_get_main_queue(), ^{
-            self->_textviewResult.text = result;
+            self->_informationText.text = result;
+            self->_informationText.text = infomationResult;
             self->_stateInp.isTranscribing = false;
         });
         
@@ -312,6 +339,8 @@ void AudioInputCallback(void * inUserData,
             NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
             NSString *infoText = @"";
             NSLog(@"Response status code: %ld", (long)[httpResponse statusCode]);
+            BOOL isNormal = NO;
+            
 
             if ([httpResponse statusCode] == 200) {
                 NSError *parseError = nil;
@@ -327,6 +356,7 @@ void AudioInputCallback(void * inUserData,
                             NSString *trimmedText = [generatedText substringFromIndex:promptLength];
 
                             infoText = trimmedText;
+                            isNormal = YES;
                         } else {
                             infoText = @"'generated_text' 키가 존재하지 않습니다.";
                         }
@@ -342,12 +372,63 @@ void AudioInputCallback(void * inUserData,
             }
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
-                strongSelf->_understandingResult.text = infoText;
+                NSMutableArray* parsedItems = [strongSelf parseStringAndReloadTableView: infoText];
+                
+                if (isNormal == NO) {
+                    strongSelf->_dataItems = @[];
+                    strongSelf->_informationText.text = infoText;
+                } else {
+                    strongSelf->_dataItems = [parsedItems copy];
+                }
+                // UITableView 갱신
+                [strongSelf->_tableView reloadData];
             });
         }
     }];
 
     [dataTask resume];
+}
+
+- (NSMutableArray *)parseStringAndReloadTableView:(NSString *)inputString {
+    NSArray *results = [inputString componentsSeparatedByString:@"\n"];
+    
+    NSMutableArray *parsedItems = [NSMutableArray array];
+    for (NSString *result in results) {
+        // 각 줄에서 '음식명', '옵션', '수량'을 추출합니다.
+        NSString *trimmedResult = [result stringByReplacingOccurrencesOfString:@"- 분석 결과 " withString:@""];
+        NSArray *splitNumbers = [trimmedResult componentsSeparatedByString:@": "];
+        if (splitNumbers.count > 1) {
+            trimmedResult = splitNumbers[1]; // 숫자 이후 문자열을 가져옵니다.
+        }
+        // 필요한 경우, 추가적인 정제 작업을 수행합니다.
+        [parsedItems addObject:trimmedResult];
+    }
+    
+    return parsedItems;
+}
+
+
+#pragma mark - UITableViewDataSource
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.dataItems.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"CellIdentifier"];
+    if (cell == nil) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"CellIdentifier"];
+    }
+
+    // 각 행의 데이터를 가져옴
+    NSString *row = self.dataItems[indexPath.row];
+    // 행 데이터를 쉼표로 구분된 문자열로 변환
+//    NSString *rowString = [row componentsJoinedByString:@", "];
+
+    // 셀에 행 데이터 표시
+    cell.textLabel.text = row;
+
+    return cell;
 }
 
 
