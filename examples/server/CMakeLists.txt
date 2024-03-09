@@ -1,12 +1,10 @@
 set(TARGET server)
-add_executable(${TARGET} server.cpp httplib.h json.hpp)
+add_executable(${TARGET} server.cpp httplib.h)
 
 include(DefaultTargetOptions)
 
-target_link_libraries(${TARGET} PRIVATE common whisper ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${TARGET} PRIVATE common json_cpp whisper ${CMAKE_THREAD_LIBS_INIT})
 
-# Check if the compiler is MinGW
-if(MINGW)
-    # Link the necessary libraries for SSL and Winsock
-    target_link_libraries(${TARGET} PRIVATE -lcrypt32 -lssl -lcrypto -lws2_32)
+if (WIN32)
+    target_link_libraries(${TARGET} PRIVATE ws2_32)
 endif()
